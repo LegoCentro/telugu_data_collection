@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telugu Character Collector</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>తెలుగు అక్షరాలు - Telugu Character Collector</h1>
+            <p>Help us collect handwritten Telugu characters for AI research!</p>
+            <p>Goal: 50 samples for each of the 80+ characters</p>
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <p id="progressText">Loading progress...</p>
+                <p id="detailProgressText"></p>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <div class="character-display">
+                <h2 id="currentCharacter">అ</h2>
+                <p id="characterName">a (vowel)</p>
+                <p id="characterInstructions">Please write the character above in the box below</p>
+                <div class="samples-needed" id="samplesNeeded">
+                    Samples collected: 0/50
+                </div>
+            </div>
+
+            <div class="drawing-area">
+                <canvas id="drawingCanvas" width="300" height="300"></canvas>
+                <div class="canvas-controls">
+                    <button id="clearCanvas" class="btn btn-secondary">Clear</button>
+                    <button id="saveDrawing" class="btn btn-primary">Save & Next</button>
+                </div>
+            </div>
+
+            <div class="character-selector">
+                <div class="category-tabs">
+                    <button class="tab-btn active" data-category="vowels">Vowels ({{ telugu_data.vowels|length
+                        }})</button>
+                    <button class="tab-btn" data-category="consonants">Consonants ({{ telugu_data.consonants|length
+                        }})</button>
+                    <button class="tab-btn" data-category="vowel_signs">Vowel Signs ({{ telugu_data.vowel_signs|length
+                        }})</button>
+                    <button class="tab-btn" data-category="special_signs">Special Signs ({{
+                        telugu_data.special_signs|length }})</button>
+                </div>
+
+                <div class="character-grid" id="characterGrid">
+                    <!-- Characters will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <div class="notification" id="notification"></div>
+    </div>
+
+    <script>
+        // Make telugu data available globally
+        window.teluguData = {{ telugu_data | tojson }};
+    </script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+
+</html>

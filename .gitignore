@@ -1,0 +1,3 @@
+venv
+*.png
+collected_data/progress.json
