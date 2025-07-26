@@ -1,2 +1,4 @@
 Flask==2.3.3
-Pillow==10.0.1
+Pillow==10.4.0
+gunicorn
+boto3  # If using AWS S3 for image storage
