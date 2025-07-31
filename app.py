@@ -114,7 +114,6 @@ def index():
     # Pass the Gemini API key to the template
     return render_template('index.html', telugu_data=telugu_data, gemini_api_key=GEMINI_API_KEY)
 
-    return render_template('index.html', telugu_data=telugu_data)
 
 @app.route('/save_drawing', methods=['POST'])
 def save_drawing():
