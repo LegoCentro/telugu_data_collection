@@ -307,7 +307,8 @@ class TeluguCollector {
         model: "gemini-2.5-flash-preview-tts"
       };
 
-      const apiKey = ""; // Canvas will automatically provide this at runtime
+      const apiKey = window.geminiApiKey; // MODIFIED: Get API Key from global variable
+
       const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
 
       let response;

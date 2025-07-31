@@ -35,6 +35,9 @@ AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
 AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1') # Default region if not specified
 
+# NEW: Gemini API Key
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+
 s3_client = None
 if S3_BUCKET_NAME and AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
     try:
@@ -107,6 +110,9 @@ def index():
     else:
         session['current_character'] = None
         session['current_category'] = 'vowels' # Default category
+
+    # Pass the Gemini API key to the template
+    return render_template('index.html', telugu_data=telugu_data, gemini_api_key=GEMINI_API_KEY)
 
     return render_template('index.html', telugu_data=telugu_data)
 
