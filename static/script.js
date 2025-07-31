@@ -12,6 +12,7 @@ class TeluguCollector {
     this.listenButton = document.getElementById("listenButton");
     this.loadingSpinner = document.getElementById("loadingSpinner");
     this.audioContext = new (window.AudioContext || window.webkitAudioContext)(); // For playing PCM audio
+    this.ttsCooldownActive = false; // NEW: Cooldown flag
 
     this.init();
   }
@@ -281,6 +282,11 @@ class TeluguCollector {
   // --- NEW: Text-to-Speech (TTS) Functionality ---
 
   async playCharacterAudio() {
+    if (this.ttsCooldownActive) { // NEW: Prevent rapid clicks
+        this.showNotification("Please wait before trying again.", "warning");
+        return;
+    }
+
     if (!this.currentCharacter || !this.currentCharacter.character) {
       this.showNotification("No character selected to play audio.", "error");
       return;
@@ -289,6 +295,7 @@ class TeluguCollector {
     const characterToSpeak = this.currentCharacter.character;
     this.listenButton.disabled = true; // Disable button during playback
     this.loadingSpinner.style.display = 'block'; // Show spinner
+    this.ttsCooldownActive = true; // Activate cooldown
 
     try {
       // Construct the payload for the Gemini TTS API
@@ -307,14 +314,14 @@ class TeluguCollector {
         model: "gemini-2.5-flash-preview-tts"
       };
 
-      const apiKey = window.geminiApiKey; // MODIFIED: Get API Key from global variable
+      const apiKey = window.geminiApiKey; // Get API Key from global variable
 
       const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
 
       let response;
       let retries = 0;
       const maxRetries = 5;
-      const initialDelay = 1000; // 1 second
+      const initialDelay = 1500; // Increased initial delay to 1.5 seconds
 
       // Implement exponential backoff for API calls
       while (retries < maxRetries) {
@@ -327,10 +334,14 @@ class TeluguCollector {
 
           if (response.ok) {
             break; // Success! Exit loop
-          } else {
-            console.warn(`API call failed (status: ${response.status}). Retrying...`);
+          } else if (response.status === 429) { // Specific handling for Too Many Requests
+            console.warn(`API call failed (status: ${response.status} - Too Many Requests). Retrying...`);
             retries++;
             await new Promise(resolve => setTimeout(resolve, initialDelay * Math.pow(2, retries - 1)));
+          } else { // Other non-OK statuses (e.g., 400, 500)
+            const errorBody = await response.text();
+            console.error(`API call failed (status: ${response.status}). Error body: ${errorBody}`);
+            throw new Error(`API error: ${response.status} - ${response.statusText}`);
           }
         } catch (error) {
           console.error(`Network error during API call: ${error}. Retrying...`);
@@ -362,13 +373,15 @@ class TeluguCollector {
 
         this.audioPlayer.src = audioUrl;
         this.audioPlayer.play();
+        this.showNotification("Playing audio...", "success");
 
         this.audioPlayer.onended = () => {
             URL.revokeObjectURL(audioUrl); // Clean up the object URL after playback
         };
 
       } else {
-        this.showNotification("Failed to get audio data or unsupported format.", "error");
+        // NEW: More specific error message for missing audio data
+        this.showNotification("Audio data not found for this character. Please try another.", "error");
         console.error("API response structure unexpected or audio data missing:", result);
       }
     } catch (error) {
@@ -377,6 +390,10 @@ class TeluguCollector {
     } finally {
       this.listenButton.disabled = false; // Re-enable button
       this.loadingSpinner.style.display = 'none'; // Hide spinner
+      // NEW: Set cooldown for 2 seconds after request finishes
+      setTimeout(() => {
+          this.ttsCooldownActive = false;
+      }, 2000);
     }
   }
 
