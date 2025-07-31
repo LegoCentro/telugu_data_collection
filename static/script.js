@@ -8,6 +8,10 @@ class TeluguCollector {
     this.lastX = 0;
     this.lastY = 0;
     this.progressData = {};
+    this.audioPlayer = document.getElementById("audioPlayer");
+    this.listenButton = document.getElementById("listenButton");
+    this.loadingSpinner = document.getElementById("loadingSpinner");
+    this.audioContext = new (window.AudioContext || window.webkitAudioContext)(); // For playing PCM audio
 
     this.init();
   }
@@ -21,6 +25,7 @@ class TeluguCollector {
     // Automatically select the first vowel
     const firstVowel = window.teluguData.vowels[0];
     this.selectCharacter(firstVowel, "vowels");
+    // Re-populate and update progress to ensure initial state is correct
     this.populateCharacterGrid();
     this.updateProgress();
   }
@@ -76,6 +81,9 @@ class TeluguCollector {
     document
       .getElementById("saveDrawing")
       .addEventListener("click", () => this.saveDrawing());
+
+    // NEW: Listen button event
+    this.listenButton.addEventListener("click", () => this.playCharacterAudio());
 
     // Tab events
     document.querySelectorAll(".tab-btn").forEach((btn) => {
@@ -267,6 +275,170 @@ class TeluguCollector {
       }
     } catch (error) {
       console.error("Error updating progress:", error);
+    }
+  }
+
+  // --- NEW: Text-to-Speech (TTS) Functionality ---
+
+  async playCharacterAudio() {
+    if (!this.currentCharacter || !this.currentCharacter.character) {
+      this.showNotification("No character selected to play audio.", "error");
+      return;
+    }
+
+    const characterToSpeak = this.currentCharacter.character;
+    this.listenButton.disabled = true; // Disable button during playback
+    this.loadingSpinner.style.display = 'block'; // Show spinner
+
+    try {
+      // Construct the payload for the Gemini TTS API
+      const payload = {
+        contents: [{
+          parts: [{ text: `Say the Telugu character: ${characterToSpeak}` }]
+        }],
+        generationConfig: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: "Kore" } // A clear voice for pronunciation
+            }
+          }
+        },
+        model: "gemini-2.5-flash-preview-tts"
+      };
+
+      const apiKey = ""; // Canvas will automatically provide this at runtime
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+
+      let response;
+      let retries = 0;
+      const maxRetries = 5;
+      const initialDelay = 1000; // 1 second
+
+      // Implement exponential backoff for API calls
+      while (retries < maxRetries) {
+        try {
+          response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          if (response.ok) {
+            break; // Success! Exit loop
+          } else {
+            console.warn(`API call failed (status: ${response.status}). Retrying...`);
+            retries++;
+            await new Promise(resolve => setTimeout(resolve, initialDelay * Math.pow(2, retries - 1)));
+          }
+        } catch (error) {
+          console.error(`Network error during API call: ${error}. Retrying...`);
+          retries++;
+          await new Promise(resolve => setTimeout(resolve, initialDelay * Math.pow(2, retries - 1)));
+        }
+      }
+
+      if (!response || !response.ok) {
+        throw new Error(`Failed to fetch audio after ${maxRetries} retries.`);
+      }
+
+      const result = await response.json();
+      const part = result?.candidates?.[0]?.content?.parts?.[0];
+      const audioData = part?.inlineData?.data;
+      const mimeType = part?.inlineData?.mimeType;
+
+      if (audioData && mimeType && mimeType.startsWith("audio/L16")) {
+        // The API returns signed PCM 16-bit audio data (audio/L16).
+        // We need to convert it to a playable WAV format.
+        const sampleRateMatch = mimeType.match(/rate=(\d+)/);
+        const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 16000; // Default to 16kHz if not found
+
+        const pcmData = this.base64ToArrayBuffer(audioData);
+        const pcm16 = new Int16Array(pcmData); // PCM 16-bit is signed
+
+        const wavBlob = this.pcmToWav(pcm16, sampleRate);
+        const audioUrl = URL.createObjectURL(wavBlob);
+
+        this.audioPlayer.src = audioUrl;
+        this.audioPlayer.play();
+
+        this.audioPlayer.onended = () => {
+            URL.revokeObjectURL(audioUrl); // Clean up the object URL after playback
+        };
+
+      } else {
+        this.showNotification("Failed to get audio data or unsupported format.", "error");
+        console.error("API response structure unexpected or audio data missing:", result);
+      }
+    } catch (error) {
+      this.showNotification("Error playing audio: " + error.message, "error");
+      console.error("TTS Error:", error);
+    } finally {
+      this.listenButton.disabled = false; // Re-enable button
+      this.loadingSpinner.style.display = 'none'; // Hide spinner
+    }
+  }
+
+  // Helper function to convert base64 to ArrayBuffer
+  base64ToArrayBuffer(base64) {
+    const binaryString = window.atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+  }
+
+  // Helper function to convert PCM data to WAV Blob
+  pcmToWav(pcm16, sampleRate) {
+    const numChannels = 1; // Mono audio
+    const bytesPerSample = 2; // 16-bit PCM
+
+    const dataLength = pcm16.length * bytesPerSample;
+    const buffer = new ArrayBuffer(44 + dataLength);
+    const view = new DataView(buffer);
+
+    // RIFF identifier
+    this.writeString(view, 0, 'RIFF');
+    // file length
+    view.setUint32(4, 36 + dataLength, true);
+    // RIFF type
+    this.writeString(view, 8, 'WAVE');
+    // format chunk identifier
+    this.writeString(view, 12, 'fmt ');
+    // format chunk length
+    view.setUint32(16, 16, true);
+    // sample format (raw PCM)
+    view.setUint16(20, 1, true);
+    // channel count
+    view.setUint16(22, numChannels, true);
+    // sample rate
+    view.setUint32(24, sampleRate, true);
+    // byte rate (sample rate * block align)
+    view.setUint32(28, sampleRate * numChannels * bytesPerSample, true);
+    // block align (channels * bytes per sample)
+    view.setUint16(32, numChannels * bytesPerSample, true);
+    // bits per sample
+    view.setUint16(34, 16, true);
+    // data chunk identifier
+    this.writeString(view, 36, 'data');
+    // data chunk length
+    view.setUint32(40, dataLength, true);
+
+    // Write PCM data
+    let offset = 44;
+    for (let i = 0; i < pcm16.length; i++, offset += bytesPerSample) {
+        view.setInt16(offset, pcm16[i], true);
+    }
+
+    return new Blob([view], { type: 'audio/wav' });
+  }
+
+  // Helper for pcmToWav
+  writeString(view, offset, string) {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
     }
   }
 }
